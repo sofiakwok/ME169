@@ -13,13 +13,13 @@ function  [t, pos, vel, eff, names] = jointstatedata(msgs, joint)
 
 % Double-check the type.
 if (~strcmp(msgs(1).MessageType, 'sensor_msgs/JointState'))
-    error(['Messages are not of type sensor_msgs/JointState']);
+    error('Messages are not of type sensor_msgs/JointState');
 end
 
 % Extract the names of the joints and double-check.
 names = msgs(1).Name;
 if (length(names) == 0)
-    error(['Messages contain no joints']);
+    error('Messages contain no joints');
 end
 
 % Extract the time (converting from sec/nsec).

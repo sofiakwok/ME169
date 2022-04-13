@@ -30,6 +30,7 @@ function  plotwheel(fig, bagfilename, joint)
 % Function to grab the data.
 function [t, p, v, e, name] = data(topic)
     try
+        disp(bagfilename)
         msgs = rosbagmsgs(bagfilename, topic);
         [t, p, v, e, name] = jointstatedata(msgs, joint);
     catch
@@ -49,18 +50,18 @@ clf;
 % Plot.
 ax(1) = subplot(2,1,1);
 hold on;
-if ~isempty(pc), plot(tc,pc,'bo--','LineWidth',2,'DisplayName','Command'); end
-if ~isempty(pd), plot(td,pd,'ro:', 'LineWidth',2,'DisplayName','Desired'); end
-if ~isempty(pa), plot(ta,pa,'gx-', 'LineWidth',2,'DisplayName','Actual');  end
+if ~isempty(pc), plot(tc,pc,'bo--','LineWidth',1,'DisplayName','Command'); end
+if ~isempty(pd), plot(td,pd,'ro:', 'LineWidth',1,'DisplayName','Desired'); end
+if ~isempty(pa), plot(ta,pa,'ko-', 'LineWidth',1,'DisplayName','Actual');  end
 grid on;
 ylabel('Position (rad)');
 title(['Data for ' joint]);
 legend;
 
 ax(2) = subplot(2,1,2);
-if ~isempty(vc), plot(tc,vc,'bo--','LineWidth',2,'DisplayName','Command'); end
-if ~isempty(vd), plot(td,vd,'ro:', 'LineWidth',2,'DisplayName','Desired'); end
-if ~isempty(va), plot(ta,va,'gx-', 'LineWidth',2,'DisplayName','Actual');  end
+if ~isempty(vc), plot(tc,vc,'bo--','LineWidth',1,'DisplayName','Command'); end
+if ~isempty(vd), plot(td,vd,'ro:', 'LineWidth',1,'DisplayName','Desired'); end
+if ~isempty(va), plot(ta,va,'ko-', 'LineWidth',1,'DisplayName','Actual');  end
 grid on;
 ylabel('Velocity (rad/sec)');
 xlabel('Time (sec)');

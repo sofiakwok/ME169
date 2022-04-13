@@ -9,8 +9,9 @@ function  msgs = rosbagmsgs(bagfilename, topicname)
 
 % Load the bag.
 try
-    bag = rosbag(bagfilename);
+    bag = rosbag(['data/',bagfilename]);
 catch
+    disp("Unable to open")
     error(['Unable to open the bag file ''' bagfilename '''']);
 end
 

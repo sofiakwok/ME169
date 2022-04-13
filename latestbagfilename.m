@@ -7,7 +7,7 @@ function bagfilename = latestbagfilename()
 %
 
 % Get a list of .bag files in the current folder.
-d = dir('*.bag');
+d = dir('data/*.bag');
 
 % Make sure we have at least one bag file.
 if (~size(d,1))
