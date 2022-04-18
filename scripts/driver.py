@@ -18,13 +18,13 @@ import time
 #
 class Driver:
     # Initialize.
-    def __init__(self, chL = 0, chR = 1, reverseL = 0, reverseR = 0):
+    def __init__(self, chL=0, chR=1, reverseL=0, reverseR=0):
         # Pick/save the parameters.
-        self.chL  = chL
-        self.chR  = chR
+        self.chL = chL
+        self.chR = chR
         self.revL = reverseL
         self.revR = reverseR
-    
+
         # Initialize a connection to the motor driver.
         self.driver = qwiic_scmd.QwiicScmd()
         if not self.driver.connected:
@@ -38,7 +38,6 @@ class Driver:
         self.driver.enable()
         print("Motors enabled.")
 
-
     # Cleanup.
     def shutdown(self):
         # Simply disable the motors.
@@ -46,7 +45,6 @@ class Driver:
         self.driver.set_drive(0, 0, 0)
         self.driver.set_drive(1, 0, 0)
         self.driver.disable()
-
 
     # Set the motors:
     def left(self, pwm):
@@ -65,16 +63,11 @@ if __name__ == "__main__":
     # Initialize the motor driver.
     driver = Driver()
 
-    # Try a sinple move.
-    print('Test driving forward...');
-    driver.left(110)
-    driver.right(-110)
-    time.sleep(1.0)
-
-    print('Test spinning right (negative Z)...');
-    driver.left(110)
-    driver.right(110)
-    time.sleep(1.0)
+    for i in range(0, 10, 10):
+        print(i)
+        driver.left(i)
+        driver.right(i)
+        time.sleep(10.0)
 
     # Cleanup (disabling the motors).
     driver.shutdown()

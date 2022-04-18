@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 #   wheelcontrol_skeleton.py
 #
@@ -29,14 +29,17 @@ import numpy as np
 
 from sensor_msgs.msg import JointState
 
-DT = 0.02
+DT = 0.01
+ENCODER_FILTER_T = 0.2
+DESIRED_FILTER_T = 0.4
+POSITION_CORRECTIVE_T = 1
 
 
 class WheelController:
-    def __init__(self, dts):
+    def __init__(self, dt, eft, dft, pct):
         # Set up low level
         self.encoder = encoder.Encoder(chLA=23, chLB=25, chRA=22, chRB=24)
-        self.driver = driver.Driver(chL=0, chR=1, reverseL=0, reverseR=1)
+        self.driver = driver.Driver(chL=0, chR=1, reverseL=0, reverseR=0)
 
         # Create a publisher to send the wheel desired and actual (state).
         self.pubdes = rospy.Publisher("/wheel_desired", JointState, queue_size=10)
@@ -45,26 +48,42 @@ class WheelController:
         # Create a subscriber to listen to wheel commands.
         self.sub = rospy.Subscriber("/wheel_command", JointState, self.callbackCommand)
 
-        duration = rospy.Duration(dts)
-        self.timer = rospy.Timer(duration, controller.callbackTimer)
+        self.timer = rospy.Timer(rospy.Duration(dt), self.callbackTimer)
 
-        self.old_encoder_wheel_angles = None
-        self.old_encoder_now = None
+        self.dt = dt
+        self.encoder_filter_t = eft
+        self.encoder_filter_velocities = np.array([0.0, 0.0])
+
+        self.old_encoder_wheel_angles = self.getEncoderWheelAngles()
+        self.old_encoder_now = rospy.Time.now()
+
+        self.cmd_velocities = np.array([0.0, 0.0])
+        self.cmd_time = rospy.Time.now()
+
+        self.desired_filter_t = dft
+        self.old_desired_positions = np.array([0.0, 0.0])
+        self.desired_filter_velocities = np.array([0.0, 0.0])
+
+        self.position_corrective_t = pct
 
     #
     #   Command Callback Function
     #
     #   Save the command and the time received.
     #
-    def callbackCommand(self, msg):
+    def callbackCommand(self, msg, time_thresh=0.25):
         # Check the message?
 
         # Note the current time (to timeout the command).
         now = rospy.Time.now()
 
-        # Save...
-        # cmdvel[]  = []
-        # cmdtime[] = []
+        if (now - msg.header.stamp).to_sec() < time_thresh:
+            self.old_desired_positions += (
+                self.cmd_velocities * (now - self.cmd_time).to_sec()
+            )
+
+            self.cmd_velocities = np.array(msg.velocity)
+            self.cmd_time = msg.header.stamp
 
     def getEncoderWheelAngles(self, edge_per_rot=16, gear_ratio=45):
         return (
@@ -73,47 +92,83 @@ class WheelController:
             * (2 * math.pi)
         )
 
+    def getEncoderWheelVelocities(self, encoder_wheel_angles, dt):
+        return (encoder_wheel_angles - self.old_encoder_wheel_angles) / dt
+
+    def applyFilter(self, u, x, dt, filter_t):
+        return u + (1 / filter_t) * dt * (x - u)
+
+    def getDt(self, now):
+        dt = now - self.old_encoder_now
+        self.old_encoder_now = now
+        return dt.to_sec()
+
+    def velocityToPWM(self, velocity):
+        return ((velocity > 0) * 35 + (9 * velocity)) + (
+            (velocity < 0) * (-35 + 9 * velocity)
+        )
+
     #
     #   Timer Callback Function
     #
 
     def callbackTimer(self, event):
-        # Note the current time to compute dt and populate the ROS messages.
         now = rospy.Time.now()
+        # Note the current time to compute dt and populate the ROS messages.
+        dt = self.getDt(now)
 
         # Process the commands.
+        self.desired_filter_velocities = self.applyFilter(
+            self.desired_filter_velocities,
+            self.cmd_velocities,
+            dt,
+            self.desired_filter_t,
+        )
+        desired_positions = (
+            self.old_desired_positions
+            + self.cmd_velocities * (now - self.cmd_time).to_sec()
+        )
 
         # Process the encoders, convert to wheel angles!
-        encoder_wheel_angles = self.getEncoderWheelAngles()
-        encoder_wheel_velocities = (
-            encoder_wheel_angles - self.old_encoder_wheel_angles
-        ) / (now - self.old_encoder_now)
+        encoder_positions = self.getEncoderWheelAngles()
+        encoder_velocities = self.getEncoderWheelVelocities(encoder_positions, dt)
+        self.encoder_filter_velocities = self.applyFilter(
+            self.encoder_filter_velocities,
+            encoder_velocities,
+            dt,
+            self.encoder_filter_t,
+        )
 
-        self.old_encoder_wheel_angles = encoder_wheel_angles
-        self.old_encoder_now = now
+        self.old_encoder_wheel_angles = encoder_positions
 
         # Add feedback?
 
         # Generate motor commands (convert wheel speed to PWM)
         # Send wheel commands.
+        desired_efforts = self.velocityToPWM(
+            self.desired_filter_velocities
+            + (1 / self.position_corrective_t) * (desired_positions - encoder_positions)
+        )
+        self.driver.left(desired_efforts[0])
+        self.driver.right(desired_efforts[1])
 
         # Publish the actual wheel state
         msg = JointState()
         msg.header.stamp = now
         msg.name = ["leftwheel", "rightwheel"]
-        msg.position = encoder_wheel_angles
-        msg.velocity = encoder_wheel_velocities
+        msg.position = encoder_positions
+        msg.velocity = self.encoder_filter_velocities
         msg.effort = [0.0, 0.0]
         self.pubact.publish(msg)
 
         # Publish the desired wheel state
-        # msg = JointState()
-        # msg.header.stamp = rospy.Time.now()
-        # msg.name = ["leftwheel", "rightwheel"]
-        # msg.position = [FIRST, SECOND]
-        # msg.velocity = [FIRST, SECOND]
-        # msg.effort = [PWM1, PWM2]
-        # self.pubdes.publish(msg)
+        msg = JointState()
+        msg.header.stamp = now
+        msg.name = ["leftwheel", "rightwheel"]
+        msg.position = desired_positions
+        msg.velocity = self.desired_filter_velocities
+        msg.effort = desired_efforts
+        self.pubdes.publish(msg)
 
     def shutdown(self):
         # Clean up the low level.
@@ -129,7 +184,9 @@ if __name__ == "__main__":
     # Initialize the ROS node.
     rospy.init_node("wheelcontrol")
 
-    controller = WheelController(DT)
+    controller = WheelController(
+        DT, ENCODER_FILTER_T, DESIRED_FILTER_T, POSITION_CORRECTIVE_T
+    )
     rospy.loginfo("Running with dt = %.3f sec..." % DT)
 
     # Spin while the callbacks are doing all the work.
