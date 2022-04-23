@@ -20,7 +20,21 @@
 
   <node name="wheelcontrol"
 	  pkg="me169"
-  	type="wheelcontrol.py"/>
+  	type="wheelcontrol.py"
+    output="screen"
+    required="true"/>
+
+  <node name="odometry"
+	  pkg="me169"
+  	type="odometry.py"
+    output="screen"
+    required="true"/>
+
+  <node name="goto"
+	  pkg="me169"
+  	type="goto.py"
+    output="screen"
+    required="true"/>
 
   <!-- Run the rviz visualization, with the specified config file -->
   <!-- Kill everything if this stops. -->

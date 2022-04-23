@@ -116,8 +116,8 @@ class WheelController:
         return dt.to_sec()
 
     def velocityToPWM(self, velocity):
-        return ((velocity > 0) * 35 + (9 * velocity)) + (
-            (velocity < 0) * (-35 + 9 * velocity)
+        return ((velocity > 0) * 35 + (12 * velocity)) + (
+            (velocity < 0) * (-35 + 12 * velocity)
         )
 
     #
