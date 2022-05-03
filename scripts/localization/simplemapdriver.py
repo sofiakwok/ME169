@@ -6,7 +6,7 @@
 #
 #   Node:       /simpledriver
 #   Publish:    /vel_cmd          geometry_msgs/Twist
-#   Subscribe:  /odom             nav_msgs/Odometry
+#   Subscribe:  /pose             geometry_msgs/PoseStamped
 #               /move_base_simple/goal  geometry_msgs/PoseStamped
 import rospy
 import math
@@ -42,7 +42,7 @@ class Simpledriver:
         self.closestObstacle = 0.0
 
         self.pub = rospy.Publisher("/vel_cmd", Twist, queue_size=10)
-        rospy.Subscriber("/odom", Odometry, self.updateOdometry)
+        rospy.Subscriber("/pose", PoseStamped, self.updatePose)
         rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.updateTarget)
         rospy.Subscriber("/scan", LaserScan, self.updateDistance)
 
@@ -54,12 +54,10 @@ class Simpledriver:
         second_smallest = np.percentile(ranges[np.nonzero(ranges)], 5)
         self.closestObstacle = second_smallest
 
-    def updateOdometry(self, msg):
-        self.cx = msg.pose.pose.position.x
-        self.cy = msg.pose.pose.position.y
-        self.ctheta = 2 * math.atan2(
-            msg.pose.pose.orientation.z, msg.pose.pose.orientation.w
-        )
+    def updatePose(self, msg):
+        self.cx = msg.pose.position.x
+        self.cy = msg.pose.position.y
+        self.ctheta = 2 * math.atan2(msg.pose.orientation.z, msg.pose.orientation.w)
 
     def updateTarget(self, msg):
         self.tx = msg.pose.position.x
