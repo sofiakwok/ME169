@@ -13,6 +13,7 @@ import rospy
 import math
 import numpy as np
 import tf2_ros
+import map
 
 from geometry_msgs.msg import (
     Twist,
@@ -25,44 +26,112 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from PlanarTransform import PlanarTransform
 
+WEIGHT = 0.05
+
 
 class Localization:
     def __init__(self) -> None:
         # Wait 30sec for a map.
-        # rospy.loginfo("Waiting for a map...")
-        # mapmsg = rospy.wait_for_message("/map", OccupancyGrid, 30.0)
+        rospy.loginfo("Waiting for a map...")
+        mapmsg = rospy.wait_for_message("/map", OccupancyGrid, 30.0)
 
-        # self.map = mapmsg.data
-        # self.map_resolution = mapmsg.info.resolution
-        # self.map_origin = mapmsg.info.origin
+        rospy.loginfo("Finding nearest walls...")
+        init_map = np.array(mapmsg.data).reshape(
+            (mapmsg.info.height, mapmsg.info.width)
+        )
+        self.map = map.Map(
+            init_map,
+            mapmsg.info.resolution,
+            PlanarTransform.fromPose(mapmsg.info.origin),
+        )
 
         rospy.loginfo("Loaded map")
 
         self.map_to_odom = PlanarTransform.unity()
+        self.odom_to_base = PlanarTransform.unity()
 
         self.pose_pub = rospy.Publisher("/pose", PoseStamped, queue_size=10)
         self.brd_tf = tf2_ros.TransformBroadcaster()
 
-        tf_buffer = tf2_ros.Buffer()
-        self.lis_tf = tf2_ros.TransformListener(tf_buffer)
+        self.tf_buffer = tf2_ros.Buffer()
+        self.lis_tf = tf2_ros.TransformListener(self.tf_buffer)
 
         rospy.Subscriber("/odom", Odometry, self.updateOdometry)
         rospy.Subscriber("/scan", LaserScan, self.updateScan)
         rospy.Subscriber("/initialpose", PoseWithCovarianceStamped, self.updatePose)
 
     def updateOdometry(self, odom_msg):
-        odom_to_base = PlanarTransform.fromPose(odom_msg.pose.pose)
+        self.odom_to_base = PlanarTransform.fromPose(odom_msg.pose.pose)
 
         pose_msg = PoseStamped()
         pose_msg.header.stamp = odom_msg.header.stamp
-        pose_msg.pose = (self.map_to_odom * odom_to_base).toPose()
+        pose_msg.pose = (self.map_to_odom * self.odom_to_base).toPose()
         self.pose_pub.publish(pose_msg)
 
+    def mapToBase(self, pt):
+        base_to_map = (self.map_to_odom * self.odom_to_base).inv()
+        x, y = base_to_map.inParent(pt[0], pt[1])
+        return np.array([x, y])
+
     def updateScan(self, msg):
+        tfmsg = self.tf_buffer.lookup_transform(
+            "odom", msg.header.frame_id, msg.header.stamp, rospy.Duration(0.1)
+        )
+        map_to_laser = self.map_to_odom * PlanarTransform.fromTransform(tfmsg.transform)
+
+        scan_pts, map_pts = np.array(
+            self.map.nearestWallptsFromScan(
+                msg.ranges,
+                msg.angle_min,
+                msg.angle_max,
+                msg.range_min,
+                msg.range_max,
+                map_to_laser,
+            )
+        )
+
+        scan_pts += np.random.standard_normal(size=scan_pts.shape) * 0.01
+
+        a = np.linalg.norm(map_pts - scan_pts, axis=1)
+
+        J = (
+            np.array(
+                [
+                    map_pts[:, 0] - scan_pts[:, 0],
+                    map_pts[:, 1] - scan_pts[:, 1],
+                    map_pts[:, 1] * scan_pts[:, 0] - map_pts[:, 0] * scan_pts[:, 1],
+                ]
+            ).T
+            / a[:, None]
+        )
+
+        scan_weights = np.minimum(
+            1
+            / np.linalg.norm(np.apply_along_axis(self.mapToBase, 1, scan_pts), axis=1)
+            ** 2,
+            1,
+        )
+        w = np.diag(scan_weights)
+
+        delta = np.linalg.pinv(J.T @ w @ J) @ J.T @ w @ a
+
+        original_x = self.map_to_odom.x()
+        original_y = self.map_to_odom.y()
+        original_theta = self.map_to_odom.theta()
+
+        delta_w = WEIGHT * delta
+        self.map_to_odom = PlanarTransform.basic(
+            delta_w[0] + original_x,
+            delta_w[1] + original_y,
+            delta_w[2] + original_theta,
+        )
+
         self.broadcastMapToOdom(msg.header.stamp)
 
     def updatePose(self, msg):
-        self.map_to_odom = PlanarTransform.fromPose(msg.pose.pose)
+        map_to_base = PlanarTransform.fromPose(msg.pose.pose)
+        self.map_to_odom = map_to_base * self.odom_to_base.inv()
+
         self.broadcastMapToOdom(msg.header.stamp)
 
     def broadcastMapToOdom(self, time):

@@ -17,9 +17,10 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 
 MIN_OBSTACLE_DIST = 0.3
-MAX_TARGET_DIST = 0.05
-MAX_SPEED = 0.2
-MAX_TURN = 2
+MAX_TARGET_DIST = 0.1
+MAX_TARGET_THETA = 0.1
+MAX_SPEED = 0.1
+MAX_TURN = 0.5
 
 
 class Simpledriver:
@@ -28,9 +29,9 @@ class Simpledriver:
         self.cy = 0.0
         self.ctheta = 0.0
 
-        self.tx = 0.0
-        self.ty = 0.0
-        self.ttheta = 0.0
+        self.tx = None
+        self.ty = None
+        self.ttheta = None
 
         self.msg = Twist()
         self.msg.linear.x = 0.0
@@ -67,24 +68,33 @@ class Simpledriver:
     def loop(self):
         # Run the servo loop until shutdown.
         while not rospy.is_shutdown():
-            dist = math.sqrt((self.tx - self.cx) ** 2 + (self.ty - self.cy) ** 2)
+            if self.tx is not None:
+                dist = math.sqrt((self.tx - self.cx) ** 2 + (self.ty - self.cy) ** 2)
 
-            if dist < MAX_TARGET_DIST:
-                gtheta = self.ttheta
+                if dist < MAX_TARGET_DIST:
+                    gtheta = self.ttheta
+                else:
+                    gtheta = math.atan2(self.ty - self.cy, self.tx - self.cx)
+
+                dtheta = gtheta - self.ctheta
+                dtheta = (dtheta + math.pi) % (2 * math.pi) - math.pi
+
+                if dist < MAX_TARGET_DIST or self.closestObstacle < MIN_OBSTACLE_DIST:
+                    self.msg.linear.x = 0
+                else:
+                    self.msg.linear.x = max(
+                        min(MAX_SPEED, 0.5 * dist * math.cos(dtheta)), -MAX_SPEED
+                    )
+
+                self.msg.angular.z = min(max(dtheta, -MAX_TURN), MAX_TURN)
+
+                if dist < MAX_TARGET_DIST and abs(dtheta) < MAX_TARGET_THETA:
+                    self.tx = None
+                    self.ty = None
+                    self.ttheta = None
             else:
-                gtheta = math.atan2(self.ty - self.cy, self.tx - self.cx)
-
-            dtheta = gtheta - self.ctheta
-            dtheta = (dtheta + math.pi) % (2 * math.pi) - math.pi
-
-            if dist < MAX_TARGET_DIST or self.closestObstacle < MIN_OBSTACLE_DIST:
                 self.msg.linear.x = 0
-            else:
-                self.msg.linear.x = max(
-                    min(MAX_SPEED, 0.5 * dist * math.cos(dtheta)), -MAX_SPEED
-                )
-
-            self.msg.angular.z = min(max(dtheta, -MAX_TURN), MAX_TURN)
+                self.msg.angular.z = 0
 
             self.pub.publish(self.msg)
 

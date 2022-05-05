@@ -45,15 +45,6 @@ class WheelController:
         self.driver = driver.Driver(self.i2cbus, chL=0, chR=1, reverseL=0, reverseR=0)
         self.gyro = gyro.Gyro(self.i2cbus)
 
-        # Create a publisher to send the wheel desired and actual (state).
-        self.pubdes = rospy.Publisher("/wheel_desired", JointState, queue_size=10)
-        self.pubact = rospy.Publisher("/wheel_state", JointState, queue_size=10)
-
-        # Create a subscriber to listen to wheel commands.
-        self.sub = rospy.Subscriber("/wheel_command", JointState, self.callbackCommand)
-
-        self.timer = rospy.Timer(rospy.Duration(dt), self.callbackTimer)
-
         self.dt = dt
         self.encoder_filter_t = eft
         self.encoder_filter_velocities = np.array([0.0, 0.0])
@@ -71,6 +62,15 @@ class WheelController:
         self.position_corrective_t = pct
 
         self.gyro_position = 0.0
+
+        # Create a publisher to send the wheel desired and actual (state).
+        self.pubdes = rospy.Publisher("/wheel_desired", JointState, queue_size=10)
+        self.pubact = rospy.Publisher("/wheel_state", JointState, queue_size=10)
+
+        self.timer = rospy.Timer(rospy.Duration(dt), self.callbackTimer)
+
+        # Create a subscriber to listen to wheel commands.
+        self.sub = rospy.Subscriber("/wheel_command", JointState, self.callbackCommand)
 
     #
     #   Command Callback Function

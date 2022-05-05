@@ -7,6 +7,7 @@
 
   <!-- Rviz configuration file parameter. -->
   <arg name="cfg"   default="$(find me169)/rviz/localization.rviz"/>
+  <arg name="map"   default="$(find me169)/maps/keck308corner.yaml"/>
 
 
   <!-- Load the URDF file into the robot_description parameter. -->
@@ -75,6 +76,13 @@
     <param name="minimum_contacts" value="5"/>
     <param name="similar_fraction" value="0.03"/>
   </node>
+
+  <node name="mapserver"
+	  pkg="map_server"
+  	type="map_server"
+    args="$(arg map)"
+    output="screen"
+    required="true"/>
 
   <!-- Run the rviz visualization, with the specified config file -->
   <!-- Kill everything if this stops. -->
