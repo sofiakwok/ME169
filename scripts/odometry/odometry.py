@@ -29,7 +29,7 @@ from sensor_msgs.msg import JointState
 #
 #   Constants
 #
-R = 0.045  # 0.0329  # Wheel radius = 32.9 mm
+R = 0.0329  # 0.0329  # Wheel radius = 32.9 mm #0.045
 d = 0.089  # 0.06445  # Halfwidth between wheels = 64.45 mm
 
 

@@ -26,7 +26,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from PlanarTransform import PlanarTransform
 
-WEIGHT = 0.05
+WEIGHT = 0.1
 
 
 class Localization:
@@ -68,11 +68,6 @@ class Localization:
         pose_msg.pose = (self.map_to_odom * self.odom_to_base).toPose()
         self.pose_pub.publish(pose_msg)
 
-    def mapToBase(self, pt):
-        base_to_map = (self.map_to_odom * self.odom_to_base).inv()
-        x, y = base_to_map.inParent(pt[0], pt[1])
-        return np.array([x, y])
-
     def updateScan(self, msg):
         tfmsg = self.tf_buffer.lookup_transform(
             "odom", msg.header.frame_id, msg.header.stamp, rospy.Duration(0.1)
@@ -90,41 +85,42 @@ class Localization:
             )
         )
 
-        scan_pts += np.random.standard_normal(size=scan_pts.shape) * 0.01
+        if len(scan_pts) > 10:
+            a = np.linalg.norm(map_pts - scan_pts, axis=1)
 
-        a = np.linalg.norm(map_pts - scan_pts, axis=1)
+            J = (
+                np.array(
+                    [
+                        map_pts[:, 0] - scan_pts[:, 0],
+                        map_pts[:, 1] - scan_pts[:, 1],
+                        map_pts[:, 1] * scan_pts[:, 0] - map_pts[:, 0] * scan_pts[:, 1],
+                    ]
+                ).T
+                / a[:, None]
+            )
 
-        J = (
-            np.array(
-                [
-                    map_pts[:, 0] - scan_pts[:, 0],
-                    map_pts[:, 1] - scan_pts[:, 1],
-                    map_pts[:, 1] * scan_pts[:, 0] - map_pts[:, 0] * scan_pts[:, 1],
-                ]
-            ).T
-            / a[:, None]
-        )
+            # base_to_map = (self.map_to_odom * self.odom_to_base).inv()
 
-        scan_weights = np.minimum(
-            1
-            / np.linalg.norm(np.apply_along_axis(self.mapToBase, 1, scan_pts), axis=1)
-            ** 2,
-            1,
-        )
-        w = np.diag(scan_weights)
+            # scan_weights = np.minimum(
+            #     1 / np.linalg.norm(base_to_map.inParentArray(scan_pts), axis=1),
+            #     1,
+            # )
+            # w = np.diag(scan_weights)
 
-        delta = np.linalg.pinv(J.T @ w @ J) @ J.T @ w @ a
+            # delta = np.linalg.pinv(J.T @ w @ J) @ J.T @ w @ a
+            delta = np.linalg.pinv(J.T @ J) @ J.T @ a
 
-        original_x = self.map_to_odom.x()
-        original_y = self.map_to_odom.y()
-        original_theta = self.map_to_odom.theta()
+            original_x = self.map_to_odom.x()
+            original_y = self.map_to_odom.y()
+            original_theta = self.map_to_odom.theta()
 
-        delta_w = WEIGHT * delta
-        self.map_to_odom = PlanarTransform.basic(
-            delta_w[0] + original_x,
-            delta_w[1] + original_y,
-            delta_w[2] + original_theta,
-        )
+            delta_w = WEIGHT * delta  # * (np.mean(scan_weights))
+
+            self.map_to_odom = PlanarTransform.basic(
+                delta_w[0] + original_x,
+                delta_w[1] + original_y,
+                delta_w[2] + original_theta,
+            )
 
         self.broadcastMapToOdom(msg.header.stamp)
 
