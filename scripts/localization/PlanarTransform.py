@@ -138,6 +138,9 @@ class PlanarTransform:
             Vector3(self.px, self.py, 0.0), Quaternion(0.0, 0.0, self.qz, self.qw)
         )
 
+    def toString(self):
+        return str(self.x()) + " " + str(self.y()) + " " + str(self.theta())
+
     @classmethod
     def unity(cls):
         return cls(0.0, 0.0, 0.0, 1.0)

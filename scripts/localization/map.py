@@ -4,7 +4,7 @@ from PlanarTransform import PlanarTransform
 
 WALLTHRESHOLD = 50
 MAXDISTANCE = 0.5
-MAXPTS = 50
+MAXPTS = 200
 
 
 class Map:
@@ -121,7 +121,7 @@ class Map:
             grid_frame_pxls[fits_in_map], max_dist=float("inf")
         )
 
-        dists = np.zeros(len(pts))
+        dists = np.ones(len(pts))
         dists[nonzero] = np.linalg.norm(pts[fits_in_map] - wall_pts, axis=1)
         return dists
 
