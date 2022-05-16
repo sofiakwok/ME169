@@ -95,8 +95,8 @@ class Localization:
             )
         )
 
-        scan_pts_base = scan_pts  # base_to_map.inParentArray(scan_pts)
-        map_pts_base = map_pts  # base_to_map.inParentArray(map_pts)
+        scan_pts_base = base_to_map.inParentArray(scan_pts)
+        map_pts_base = base_to_map.inParentArray(map_pts)
 
         if len(scan_pts) > 10:
             a = np.linalg.norm(map_pts_base - scan_pts_base, axis=1)
@@ -132,22 +132,24 @@ class Localization:
             delta_w_base = WEIGHT * delta_base
             # delta_w_base *= min(1, MAX_UPDATE / np.linalg.norm(delta_w_base))
 
-            # map_to_base_n = PlanarTransform.basic(
-            #     delta_w_base[0] + base_to_map.x(),
-            #     delta_w_base[1] + base_to_map.y(),
-            #     delta_w_base[2] + base_to_map.theta(),
-            # ).inv()
+            # print(delta_w_base)
 
-            # print(delta_w_base, map_to_base.toString(), map_to_base_n.toString())
-
-            self.map_to_odom = PlanarTransform.basic(
-                delta_w_base[0] + self.map_to_odom.x(),
-                delta_w_base[1] + self.map_to_odom.y(),
-                delta_w_base[2] + self.map_to_odom.theta(),
+            base_n_to_base = PlanarTransform.basic(
+                delta_w_base[0],
+                delta_w_base[1],
+                delta_w_base[2],
             )
 
-            # base_to_odom = base_to_map * self.map_to_odom
-            # self.map_to_odom = map_to_base_n * base_to_odom
+            map_to_base_n = map_to_base * base_n_to_base
+
+            # self.map_to_odom = PlanarTransform.basic(
+            #     delta_w_base[0] + self.map_to_odom.x(),
+            #     delta_w_base[1] + self.map_to_odom.y(),
+            #     delta_w_base[2] + self.map_to_odom.theta(),
+            # )
+
+            base_to_odom = base_to_map * self.map_to_odom
+            self.map_to_odom = map_to_base_n * base_to_odom
 
         self.broadcastMapToOdom(msg.header.stamp)
 

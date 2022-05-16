@@ -70,11 +70,14 @@ class PlanarTransform:
 
     def __mul__(self, next):
         (x, y) = self.inParent(next.px, next.py)
+        nqz = self.qz * next.qw + self.qw * next.qz
+        nqw = self.qw * next.qw - self.qz * next.qz
+        s = math.sqrt(nqz**2 + nqw**2)
         return PlanarTransform(
             x,
             y,
-            self.qz * next.qw + self.qw * next.qz,
-            self.qw * next.qw - self.qz * next.qz,
+            nqz / s,
+            nqw / s,
         )
 
     def inv(self):
