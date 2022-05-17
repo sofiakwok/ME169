@@ -31,11 +31,13 @@ from nav_msgs.msg import OccupancyGrid
 from PlanarTransform import PlanarTransform
 from montecarloframe import MonteCarloFrame
 
-WEIGHT = 0.01
+WEIGHT = 0.1
 MAX_UPDATE = 0.01
+NMCFRAMES = 3
+MAXPTS = 30
 
 
-class Localization:
+class MonteCarloLocalization:
     def __init__(self) -> None:
         # Wait 30sec for a map.
         rospy.loginfo("Waiting for a map...")
@@ -53,11 +55,9 @@ class Localization:
 
         rospy.loginfo("Loaded map")
 
-        self.pose_pub = rospy.Publisher("/pose", PoseStamped, queue_size=1)
-        self.alternate_pose_pub = rospy.Publisher("/mcposes", Marker, queue_size=1)
         self.brd_tf = tf2_ros.TransformBroadcaster()
 
-        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(10))
         self.lis_tf = tf2_ros.TransformListener(self.tf_buffer)
 
         # set up frames
@@ -66,24 +66,25 @@ class Localization:
                 "base", "laser", rospy.Time.now(), rospy.Duration(0.1)
             ).transform
         )
-        self.map_to_odom_mcframe = MonteCarloFrame(
-            "odom", self.brd_tf, self.tf_buffer, self.map, self.base_to_laser
-        )
+
         self.odom_to_base = PlanarTransform.unity()
+        self.map_to_odom_mcframes = []
+        for i in range(NMCFRAMES):
+            f = MonteCarloFrame(
+                "odom" + str(i),
+                self.brd_tf,
+                self.tf_buffer,
+                self.map,
+                self.base_to_laser,
+            )
+            f.randomize()
+            self.map_to_odom_mcframes.append(f)
 
         rospy.Subscriber("/odom", Odometry, self.updateOdometry)
         rospy.Subscriber("/scan", LaserScan, self.updateScan)
-        rospy.Subscriber("/initialpose", PoseWithCovarianceStamped, self.updatePose)
 
     def updateOdometry(self, odom_msg):
         self.odom_to_base = PlanarTransform.fromPose(odom_msg.pose.pose)
-
-        pose_msg = PoseStamped()
-        pose_msg.header.stamp = odom_msg.header.stamp
-        pose_msg.pose = (
-            self.map_to_odom_mcframe.lookupRecent() * self.odom_to_base
-        ).toPose()
-        self.pose_pub.publish(pose_msg)
 
     def updateScan(self, msg):
         odom_to_base_msg = self.tf_buffer.lookup_transform(
@@ -92,21 +93,16 @@ class Localization:
 
         odom_to_base = PlanarTransform.fromTransform(odom_to_base_msg.transform)
         laser_frame_scan_locs = self.map.filterScan(
-            msg.ranges, msg.angle_min, msg.angle_max, msg.range_min, msg.range_max
-        )
-        self.map_to_odom_mcframe.localize(
-            laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT
+            msg.ranges,
+            msg.angle_min,
+            msg.angle_max,
+            msg.range_min,
+            msg.range_max,
+            max_pts=MAXPTS,
         )
 
-        # for f in self.map_to_odom_mcframes:
-        #     f.localize(
-        #         laser_frame_scan_locs, odom_to_base, msg.header.stamp, 10 * WEIGHT
-        #     )
-
-    def updatePose(self, msg):
-        map_to_base = PlanarTransform.fromPose(msg.pose.pose)
-        self.map_to_odom_mcframe.set(map_to_base * self.odom_to_base.inv())
-        self.map_to_odom_mcframe.broadcast(msg.header.stamp)
+        for f in self.map_to_odom_mcframes:
+            f.localize(laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT)
 
 
 #
@@ -114,10 +110,10 @@ class Localization:
 #
 if __name__ == "__main__":
     # Initialize the ROS node.
-    rospy.init_node("localization")
+    rospy.init_node("mclocalization")
 
-    localization = Localization()
+    mclocalization = MonteCarloLocalization()
 
-    rospy.loginfo("localization started")
+    rospy.loginfo("mclocalization started")
     rospy.spin()
-    rospy.loginfo("localization stopped.")
+    rospy.loginfo("mclocalization stopped.")
