@@ -11,6 +11,9 @@ import rospy
 import random
 import numpy as np
 
+CONF_BIAS = 0.01
+CONF_SCALE = 0.1
+
 
 class MonteCarloFrame:
     def __init__(
@@ -33,14 +36,16 @@ class MonteCarloFrame:
 
         self.tf = tf
 
-        self.logconf = 1
+        self.conf = 0
 
     def randomize(self):
         self.tf = PlanarTransform.basic(
-            random.normalvariate(0, 1),
-            random.normalvariate(0, 1),
+            random.uniform(-3, 3),
+            random.uniform(3, -1),
             random.uniform(0, 2 * np.pi),
         )
+
+        self.conf = 0
 
     def set(self, ntf, time=None):
         self.tf = ntf
@@ -105,5 +110,13 @@ class MonteCarloFrame:
 
             base_to_odom = base_to_map * self.lookupRecent()
             self.set(map_to_base_n * base_to_odom)
+
+            dconf_dists = -np.mean(np.linalg.norm(scan_pts_base - map_pts_base, axis=1))
+            self.conf = min(
+                max(self.conf + (dconf_dists) * CONF_SCALE + CONF_BIAS, -1), 1
+            )
+
+        else:
+            self.conf = min(max(self.conf - 0.1, -1), 1)
 
         self.broadcast(time)

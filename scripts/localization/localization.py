@@ -14,6 +14,7 @@ import math
 import numpy as np
 import tf2_ros
 import map
+import time
 
 from geometry_msgs.msg import (
     Twist,
@@ -28,6 +29,7 @@ from visualization_msgs.msg import Marker
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import Float32
 from PlanarTransform import PlanarTransform
 from montecarloframe import MonteCarloFrame
 
@@ -55,6 +57,7 @@ class Localization:
 
         self.pose_pub = rospy.Publisher("/pose", PoseStamped, queue_size=1)
         self.alternate_pose_pub = rospy.Publisher("/mcposes", Marker, queue_size=1)
+        self.conf_pub = rospy.Publisher("/localization_conf", Float32, queue_size=1)
         self.brd_tf = tf2_ros.TransformBroadcaster()
 
         self.tf_buffer = tf2_ros.Buffer()
@@ -63,7 +66,7 @@ class Localization:
         # set up frames
         self.base_to_laser = PlanarTransform.fromTransform(
             self.tf_buffer.lookup_transform(
-                "base", "laser", rospy.Time.now(), rospy.Duration(0.1)
+                "base", "laser", rospy.Time.now(), rospy.Duration(1.0)
             ).transform
         )
         self.map_to_odom_mcframe = MonteCarloFrame(
@@ -97,6 +100,9 @@ class Localization:
         self.map_to_odom_mcframe.localize(
             laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT
         )
+
+        conf_msg = Float32(data=self.map_to_odom_mcframe.conf)
+        self.conf_pub.publish(conf_msg)
 
         # for f in self.map_to_odom_mcframes:
         #     f.localize(
