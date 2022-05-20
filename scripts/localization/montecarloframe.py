@@ -11,8 +11,9 @@ import rospy
 import random
 import numpy as np
 
-CONF_BIAS = 0.01
-CONF_SCALE = 0.1
+import map as rmap
+
+CONF_CHANGE_CONST = 0.1
 
 
 class MonteCarloFrame:
@@ -35,6 +36,8 @@ class MonteCarloFrame:
         self.base_to_laser = base_to_laser
 
         self.tf = tf
+
+        self.last_localization_time = rospy.Time.now()
 
         self.conf = 0
 
@@ -68,6 +71,7 @@ class MonteCarloFrame:
         return self.tf
 
     def localize(self, laser_frame_scan_locs, odom_to_base, time, weight):
+        dt = (time - self.last_localization_time).to_sec()
         map_to_base = self.lookupRecent() * odom_to_base
         base_to_map = map_to_base.inv()
 
@@ -98,7 +102,7 @@ class MonteCarloFrame:
 
             delta_base = np.linalg.pinv(J.T @ J) @ J.T @ a
 
-            delta_w_base = weight * delta_base
+            delta_w_base = weight * delta_base * max(1, dt)
 
             base_n_to_base = PlanarTransform.basic(
                 delta_w_base[0],
@@ -111,12 +115,24 @@ class MonteCarloFrame:
             base_to_odom = base_to_map * self.lookupRecent()
             self.set(map_to_base_n * base_to_odom)
 
-            dconf_dists = -np.mean(np.linalg.norm(scan_pts_base - map_pts_base, axis=1))
-            self.conf = min(
-                max(self.conf + (dconf_dists) * CONF_SCALE + CONF_BIAS, -1), 1
+            conf_dists = np.mean(np.linalg.norm(scan_pts_base - map_pts_base, axis=1))
+
+            conf_dists_with_missed = (
+                -(
+                    rmap.MAXDISTANCE * (len(laser_frame_scan_locs) - len(scan_pts_base))
+                    + conf_dists * len(scan_pts_base)
+                )
+                / len(laser_frame_scan_locs)
+                / rmap.MAXDISTANCE
+            ) + 1
+
+            self.conf = (
+                self.conf * (1 - CONF_CHANGE_CONST * dt)
+                + conf_dists_with_missed * CONF_CHANGE_CONST * dt
             )
 
         else:
-            self.conf = min(max(self.conf - 0.1, -1), 1)
+            self.conf = self.conf * (1 - CONF_CHANGE_CONST * dt)
 
+        self.last_localization_time = time
         self.broadcast(time)
