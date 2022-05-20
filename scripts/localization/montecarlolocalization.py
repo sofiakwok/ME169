@@ -125,7 +125,7 @@ class MonteCarloLocalization:
         for f in self.map_to_odom_mcframes:
             fl = f.lookupRecent()
             for l in known_locs:
-                if l.dist(fl) < MIN_DIST and abs(l.angledist(fl) < MIN_ANGLE):
+                if l.dist(fl) < MIN_DIST:  # and abs(l.angledist(fl)) < MIN_ANGLE:
                     f.randomize()
                 else:
                     known_locs.append(fl)
