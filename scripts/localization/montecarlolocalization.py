@@ -38,9 +38,9 @@ WEIGHT = 0.05
 MAX_UPDATE = 0.01
 NMCFRAMES = 25
 MAXPTS = 40
-RANDOMIZE_THRESH = -0.1
-SWITCH_DELTA_THRESH = 0.1
-SWITCH_THESH = 0.5
+RANDOMIZE_THRESH = 0.3
+SWITCH_DELTA_THRESH = 0.05
+SWITCH_THESH = 0.7
 
 
 class MonteCarloLocalization:
@@ -91,6 +91,7 @@ class MonteCarloLocalization:
         self.switch_pub = rospy.Publisher(
             "/initialpose", PoseWithCovarianceStamped, queue_size=1
         )
+        self.conf_pub = rospy.Publisher("/mclocalization_conf", Float32, queue_size=1)
 
         rospy.Subscriber("/odom", Odometry, self.updateOdometry)
         rospy.Subscriber("/scan", LaserScan, self.updateScan)
@@ -120,18 +121,23 @@ class MonteCarloLocalization:
         for f in self.map_to_odom_mcframes:
             f.localize(laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT)
 
-            # if (
-            #     f.conf > (self.localization_conf + SWITCH_DELTA_THRESH)
-            #     and f.conf > SWITCH_THESH
-            # ):
-            #     switch_msg = PoseWithCovarianceStamped()
-            #     switch_msg.pose.pose = self.map_to_odom_mcframes[0].lookupRecent().toPose()
-            #     switch_msg.header.stamp = msg.header.stamp
-            #     self.switch_pub.publish(switch_msg)
-            #     f.randomize()
-
             if f.conf < RANDOMIZE_THRESH:
                 f.randomize()
+
+        self.map_to_odom_mcframes.sort(key=lambda f: -f.conf)
+        if (
+            self.map_to_odom_mcframes[0].conf
+            > (self.localization_conf + SWITCH_DELTA_THRESH)
+            and self.map_to_odom_mcframes[0].conf > SWITCH_THESH
+        ):
+            switch_msg = PoseWithCovarianceStamped()
+            switch_msg.pose.pose = (
+                self.map_to_odom_mcframes[0].lookupRecent() * odom_to_base
+            ).toPose()
+            switch_msg.header.stamp = msg.header.stamp
+            self.switch_pub.publish(switch_msg)
+            f.randomize()
+        self.conf_pub.publish(self.map_to_odom_mcframes[0].conf)
 
 
 #

@@ -39,16 +39,14 @@ class MonteCarloFrame:
 
         self.last_localization_time = rospy.Time.now()
 
-        self.conf = 0
+        self.conf = 0.5
 
     def randomize(self):
         self.tf = PlanarTransform.basic(
-            random.uniform(-3, 3),
-            random.uniform(3, -1),
-            random.uniform(0, 2 * np.pi),
+            random.uniform(-3, 3), random.uniform(3, -1), random.uniform(0, 2 * np.pi)
         )
 
-        self.conf = 0
+        self.conf = 0.5
 
     def set(self, ntf, time=None):
         self.tf = ntf
@@ -77,8 +75,7 @@ class MonteCarloFrame:
 
         scan_pts, map_pts = np.array(
             self.map.nearestWallptsFromScan(
-                laser_frame_scan_locs,
-                map_to_base * self.base_to_laser,
+                laser_frame_scan_locs, map_to_base * self.base_to_laser
             )
         )
 
@@ -105,9 +102,7 @@ class MonteCarloFrame:
             delta_w_base = weight * delta_base * max(1, dt)
 
             base_n_to_base = PlanarTransform.basic(
-                delta_w_base[0],
-                delta_w_base[1],
-                delta_w_base[2],
+                delta_w_base[0], delta_w_base[1], delta_w_base[2]
             )
 
             map_to_base_n = map_to_base * base_n_to_base
