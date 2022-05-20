@@ -34,9 +34,9 @@ from std_msgs.msg import Float32
 from PlanarTransform import PlanarTransform
 from montecarloframe import MonteCarloFrame
 
-WEIGHT = 0.2
+WEIGHT = 0.05
 MAX_UPDATE = 0.01
-NMCFRAMES = 10
+NMCFRAMES = 25
 MAXPTS = 40
 RANDOMIZE_THRESH = -0.1
 SWITCH_DELTA_THRESH = 0.1
@@ -117,25 +117,21 @@ class MonteCarloLocalization:
             max_pts=MAXPTS,
         )
 
-        confs = (
-            np.array(list(map(lambda f: f.conf, self.map_to_odom_mcframes))) + 1.0 + 0.1
-        )
+        for f in self.map_to_odom_mcframes:
+            f.localize(laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT)
 
-        f = random.choices(self.map_to_odom_mcframes, weights=confs, k=1)[0]
-        f.localize(laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT)
+            # if (
+            #     f.conf > (self.localization_conf + SWITCH_DELTA_THRESH)
+            #     and f.conf > SWITCH_THESH
+            # ):
+            #     switch_msg = PoseWithCovarianceStamped()
+            #     switch_msg.pose.pose = self.map_to_odom_mcframes[0].lookupRecent().toPose()
+            #     switch_msg.header.stamp = msg.header.stamp
+            #     self.switch_pub.publish(switch_msg)
+            #     f.randomize()
 
-        if (
-            f.conf > (self.localization_conf + SWITCH_DELTA_THRESH)
-            and f.conf > SWITCH_THESH
-        ):
-            switch_msg = PoseWithCovarianceStamped()
-            switch_msg.pose.pose = self.map_to_odom_mcframes[0].lookupRecent().toPose()
-            switch_msg.header.stamp = msg.header.stamp
-            self.switch_pub.publish(switch_msg)
-            f.randomize()
-
-        if f.conf < RANDOMIZE_THRESH:
-            f.randomize()
+            if f.conf < RANDOMIZE_THRESH:
+                f.randomize()
 
 
 #
