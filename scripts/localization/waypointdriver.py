@@ -14,6 +14,7 @@ import numpy as np
 
 from geometry_msgs.msg import Twist, PoseStamped, Point
 from nav_msgs.msg import Odometry, OccupancyGrid
+from std_msgs.msg import Float32
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
 
@@ -30,9 +31,13 @@ DIST_SCALE_SPEED = 0.3
 MAX_TURN = 0.5
 TURN_SCALE = 0.5
 
+CONF_THRESHOLD = 0.75
+
 
 class Waypointdriver:
     def __init__(self) -> None:
+        self.localization_conf = 0
+
         self.cx = 0.0
         self.cy = 0.0
         self.ctheta = 0.0
@@ -73,6 +78,7 @@ class Waypointdriver:
         )
         self.rrt = rrt.RRT(self.map)
         rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.updateTarget)
+        rospy.Subscriber("/localization_conf", Float32, self.updateLocalizationConf)
 
     def updateWaypoints(self):
         marker_pts = Marker()
@@ -97,6 +103,9 @@ class Waypointdriver:
             marker_pts.points.append(Point(pt[0], pt[1], 0.0))
         self.pointspub.publish(marker_pts)
 
+    def updateLocalizationConf(self, conf_msg):
+        self.localization_conf = conf_msg.data
+
     def updateDistance(self, msg):
         ranges = np.array(msg.ranges)
         second_smallest = np.percentile(ranges[np.nonzero(ranges)], 5)
@@ -118,7 +127,7 @@ class Waypointdriver:
     def loop(self):
         # Run the servo loop until shutdown.
         while not rospy.is_shutdown():
-            if len(self.waypoints) > 0:
+            if len(self.waypoints) > 0 and self.localization_conf > CONF_THRESHOLD:
                 tx = self.waypoints[0][0]
                 ty = self.waypoints[0][1]
                 dist = math.sqrt((tx - self.cx) ** 2 + (ty - self.cy) ** 2)

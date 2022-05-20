@@ -36,11 +36,14 @@ from montecarloframe import MonteCarloFrame
 
 WEIGHT = 0.05
 MAX_UPDATE = 0.01
-NMCFRAMES = 25
+NMCFRAMES = 20
 MAXPTS = 40
-RANDOMIZE_THRESH = 0.3
+RANDOMIZE_THRESH = 0.4
 SWITCH_DELTA_THRESH = 0.05
 SWITCH_THESH = 0.7
+
+MIN_DIST = 0.1
+MIN_ANGLE = 0.1
 
 
 class MonteCarloLocalization:
@@ -117,6 +120,15 @@ class MonteCarloLocalization:
             msg.range_max,
             max_pts=MAXPTS,
         )
+
+        known_locs = []
+        for f in self.map_to_odom_mcframes:
+            fl = f.lookupRecent()
+            for l in known_locs:
+                if l.dist(fl) < MIN_DIST and abs(l.angledist(fl) < MIN_ANGLE):
+                    f.randomize()
+                else:
+                    known_locs.append(fl)
 
         for f in self.map_to_odom_mcframes:
             f.localize(laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT)

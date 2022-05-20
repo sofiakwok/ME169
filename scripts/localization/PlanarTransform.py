@@ -114,6 +114,13 @@ class PlanarTransform:
     def theta(self):
         return math.atan2(self.sin(), self.cos())
 
+    def dist(self, other):
+        return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+    def angledist(self, other):
+        dtheta = self.theta() - other.theta()
+        return (dtheta + math.pi) % (2 * math.pi) - math.pi
+    
     # Representation:
     def __repr__(self):
         return "<px:%6.3f, py:%6.3f, qz:%6.3f, qw:%6.3f>" % (
