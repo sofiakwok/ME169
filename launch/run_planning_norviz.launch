@@ -7,7 +7,7 @@
 
   <!-- Rviz configuration file parameter. -->
   <arg name="cfg"   default="$(find me169)/rviz/planning.rviz"/>
-  <arg name="map"   default="$(find me169)/maps/keck308corner.yaml"/>
+  <arg name="map"   default="$(find me169)/maps/keck308corner_obstacles.yaml"/>
 
 
   <!-- Load the URDF file into the robot_description parameter. -->
