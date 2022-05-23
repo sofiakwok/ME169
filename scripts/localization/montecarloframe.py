@@ -40,14 +40,18 @@ class MonteCarloFrame:
 
         self.last_localization_time = rospy.Time.now()
 
+        self.odom_to_base = PlanarTransform.unity()
+
         self.conf = 0.5
         self.best_prev_conf = self.conf
         self.best_prev_conf_time = rospy.Time.now()
 
     def randomize(self):
-        self.tf = PlanarTransform.basic(
+        new_map_to_base = PlanarTransform.basic(
             random.uniform(-3, 3), random.uniform(3, -1), random.uniform(0, 2 * np.pi)
         )
+
+        self.tf = new_map_to_base * self.odom_to_base.inv()
 
         self.conf = 0.5
         self.best_prev_conf = 0.5
@@ -74,6 +78,8 @@ class MonteCarloFrame:
         return self.tf
 
     def localize(self, laser_frame_scan_locs, odom_to_base, time, weight):
+        self.odom_to_base = odom_to_base
+
         dt = (time - self.last_localization_time).to_sec()
         map_to_base = self.lookupRecent() * odom_to_base
         base_to_map = map_to_base.inv()
