@@ -21,7 +21,7 @@ from visualization_msgs.msg import Marker
 import rrt, map
 from PlanarTransform import PlanarTransform
 
-MIN_OBSTACLE_DIST = 0.3
+MIN_OBSTACLE_DIST = 0.2
 MAX_TARGET_DIST = 0.1
 MAX_TARGET_THETA = 0.1
 
@@ -32,8 +32,9 @@ MAX_TURN = 0.5
 TURN_SCALE = 0.5
 
 CONF_THRESHOLD = 0.75
+REPLAN_TELEPORT_THRESH = 0.2
 
-MAX_STUCK_TIME = 0.5
+MAX_STUCK_TIME = 3
 
 
 class Waypointdriver:
@@ -116,14 +117,28 @@ class Waypointdriver:
         self.closestObstacle = second_smallest
 
     def updatePose(self, msg):
+        ocx = self.cx
+        ocy = self.cy
+
         self.cx = msg.pose.position.x
         self.cy = msg.pose.position.y
         self.ctheta = 2 * math.atan2(msg.pose.orientation.z, msg.pose.orientation.w)
 
+        if (
+            math.sqrt(
+                (ocx - msg.pose.position.x) ** 2 + (ocy - msg.pose.position.y) ** 2
+            )
+            > REPLAN_TELEPORT_THRESH
+        ):
+            self.updateWaypoints()
+
     def generateWaypoints(self):
-        self.waypoints = self.rrt.pathRRT(
-            [self.cx, self.cy], [self.target[0], self.target[1]]
-        )
+        if self.target is not None:
+            self.waypoints = self.rrt.pathRRT(
+                [self.cx, self.cy], [self.target[0], self.target[1]]
+            )
+        else:
+            self.waypoints = []
 
     def updateTarget(self, msg):
         # self.waypoints.append([msg.pose.position.x, msg.pose.position.y])
@@ -164,6 +179,8 @@ class Waypointdriver:
                 else:
                     self.stuck_time = 0
                     if dist < MAX_TARGET_DIST:
+                        self.target = None
+                        self.updateWaypoints()
                         self.msg.linear.x = 0
                     else:
                         self.msg.linear.x = max(
