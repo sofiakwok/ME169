@@ -41,7 +41,8 @@ MAXPTS = 40
 RANDOMIZE_THRESH = 0.4
 SWITCH_DELTA_THRESH = 0.05
 SWITCH_THESH = 0.7
-BEST_PREV_RANDOMIZE_BUFFER = 1.05
+
+PREV_CONF_BUFFER = 0.05
 
 MIN_DIST = 0.1
 MIN_ANGLE = 0.1
@@ -136,7 +137,7 @@ class MonteCarloLocalization:
 
             if (
                 f.conf < RANDOMIZE_THRESH
-                or f.conf < f.best_prev_conf * BEST_PREV_RANDOMIZE_BUFFER
+                or f.conf < f.prev_confs[0] < f.conf + PREV_CONF_BUFFER
             ):
                 f.randomize()
 

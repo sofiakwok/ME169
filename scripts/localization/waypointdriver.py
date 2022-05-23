@@ -33,6 +33,8 @@ TURN_SCALE = 0.5
 
 CONF_THRESHOLD = 0.75
 
+MAX_STUCK_TIME = 0.5
+
 
 class Waypointdriver:
     def __init__(self) -> None:
@@ -43,7 +45,9 @@ class Waypointdriver:
         self.ctheta = 0.0
 
         self.waypoints = []
+        self.stuck_time = 0
         self.ttheta = None
+        self.target = None
 
         self.msg = Twist()
         self.msg.linear.x = 0.0
@@ -116,18 +120,28 @@ class Waypointdriver:
         self.cy = msg.pose.position.y
         self.ctheta = 2 * math.atan2(msg.pose.orientation.z, msg.pose.orientation.w)
 
+    def generateWaypoints(self):
+        self.waypoints = self.rrt.pathRRT(
+            [self.cx, self.cy], [self.target[0], self.target[1]]
+        )
+
     def updateTarget(self, msg):
         # self.waypoints.append([msg.pose.position.x, msg.pose.position.y])
-        self.waypoints = self.rrt.pathRRT(
-            [self.cx, self.cy], [msg.pose.position.x, msg.pose.position.y]
-        )
+        self.target = (msg.pose.position.x, msg.pose.position.y)
+        self.generateWaypoints()
         # self.updateWaypoints()
         self.ttheta = 2 * math.atan2(msg.pose.orientation.z, msg.pose.orientation.w)
 
     def loop(self):
+
         # Run the servo loop until shutdown.
+        prev_loop_time = rospy.Time.now()
         while not rospy.is_shutdown():
-            if len(self.waypoints) > 0 and self.localization_conf > CONF_THRESHOLD:
+            dt = (rospy.Time.now() - prev_loop_time).to_sec()
+            prev_loop_time = rospy.Time.now()
+            if (
+                len(self.waypoints) > 0 and self.localization_conf > CONF_THRESHOLD
+            ):  # we have waypoints to move to, and are confident in them
                 tx = self.waypoints[0][0]
                 ty = self.waypoints[0][1]
                 dist = math.sqrt((tx - self.cx) ** 2 + (ty - self.cy) ** 2)
@@ -136,24 +150,32 @@ class Waypointdriver:
                     self.waypoints.pop(0)
                     # self.updateWaypoints()
 
-                else:
-                    gtheta = math.atan2(ty - self.cy, tx - self.cx)
-
+                gtheta = math.atan2(ty - self.cy, tx - self.cx)
                 dtheta = gtheta - self.ctheta
                 dtheta = (dtheta + math.pi) % (2 * math.pi) - math.pi
 
-                if dist < MAX_TARGET_DIST or self.closestObstacle < MIN_OBSTACLE_DIST:
+                if self.closestObstacle < MIN_OBSTACLE_DIST:
+                    if self.stuck_time > MAX_STUCK_TIME:
+                        self.generateWaypoints()
+                        self.stuck_time = 0
+                    else:
+                        self.stuck_time += dt
                     self.msg.linear.x = 0
                 else:
-                    self.msg.linear.x = max(
-                        min(
-                            MAX_SPEED, DIST_SCALE_SPEED * dist * (math.cos(dtheta) ** 5)
-                        ),
-                        -MAX_SPEED,
-                    )
+                    self.stuck_time = 0
+                    if dist < MAX_TARGET_DIST:
+                        self.msg.linear.x = 0
+                    else:
+                        self.msg.linear.x = max(
+                            min(
+                                MAX_SPEED,
+                                DIST_SCALE_SPEED * dist * (math.cos(dtheta) ** 5),
+                            ),
+                            -MAX_SPEED,
+                        )
 
                 self.msg.angular.z = min(max(TURN_SCALE * dtheta, -MAX_TURN), MAX_TURN)
-            else:
+            else:  # no waypoints, don't move
                 self.msg.linear.x = 0
                 self.msg.angular.z = 0
 
