@@ -14,6 +14,7 @@ import numpy as np
 import map as rmap
 
 CONF_CHANGE_CONST = 0.1
+BEST_CONF_DURATION = 5
 
 
 class MonteCarloFrame:
@@ -40,6 +41,8 @@ class MonteCarloFrame:
         self.last_localization_time = rospy.Time.now()
 
         self.conf = 0.5
+        self.best_prev_conf = self.conf
+        self.best_prev_conf_time = rospy.Time.now()
 
     def randomize(self):
         self.tf = PlanarTransform.basic(
@@ -47,6 +50,8 @@ class MonteCarloFrame:
         )
 
         self.conf = 0.5
+        self.best_prev_conf = 0.5
+        self.best_prev_conf_time = rospy.Time.now()
 
     def set(self, ntf, time=None):
         self.tf = ntf
@@ -128,6 +133,12 @@ class MonteCarloFrame:
 
         else:
             self.conf = self.conf * (1 - CONF_CHANGE_CONST * dt)
+
+        if (self.conf > self.best_prev_conf) or (
+            time - self.best_prev_conf_time
+        ).to_sec() > BEST_CONF_DURATION:
+            self.best_prev_conf = self.conf
+            self.best_prev_conf_time = time
 
         self.last_localization_time = time
         self.broadcast(time)

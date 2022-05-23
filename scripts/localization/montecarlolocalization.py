@@ -41,6 +41,7 @@ MAXPTS = 40
 RANDOMIZE_THRESH = 0.4
 SWITCH_DELTA_THRESH = 0.05
 SWITCH_THESH = 0.7
+BEST_PREV_RANDOMIZE_BUFFER = 1.05
 
 MIN_DIST = 0.1
 MIN_ANGLE = 0.1
@@ -133,7 +134,10 @@ class MonteCarloLocalization:
         for f in self.map_to_odom_mcframes:
             f.localize(laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT)
 
-            if f.conf < RANDOMIZE_THRESH:
+            if (
+                f.conf < RANDOMIZE_THRESH
+                or f.conf < f.best_prev_conf * BEST_PREV_RANDOMIZE_BUFFER
+            ):
                 f.randomize()
 
         self.map_to_odom_mcframes.sort(key=lambda f: -f.conf)
