@@ -155,6 +155,12 @@ class MonteCarloLocalization:
                 switch_msg.pose.pose = (map_to_base).toPose()
                 switch_msg.header.stamp = msg.header.stamp
                 self.switch_pub.publish(switch_msg)
+            else:
+                print(
+                    base_pt,
+                    self.map.inFreespace(base_pt)[0],
+                    self.map.distancesToNearestWall(base_pt)[0],
+                )
             f.randomize()
         self.conf_pub.publish(self.map_to_odom_mcframes[0].conf)
 

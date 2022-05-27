@@ -117,7 +117,11 @@ class Map:
 
         res = np.array([0] * len(pts), dtype=bool)
         nonzero = np.nonzero(fits_in_map)
-        res[nonzero] = self.map[grid_frame_pxls[nonzero]] > WALLTHRESHOLD
+        idx = grid_frame_pxls[nonzero].astype(int)
+        res[nonzero] = np.logical_and(
+            self.map[idx[:, 1], idx[:, 0]] < WALLTHRESHOLD,
+            self.map[idx[:, 1], idx[:, 0]] >= 0,
+        )
 
         return res
 
