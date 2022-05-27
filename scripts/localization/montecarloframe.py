@@ -13,9 +13,9 @@ import numpy as np
 
 import map as rmap
 
-CONF_CHANGE_CONST = 0.1
+CONF_CHANGE_CONST = 0.2
 
-PREV_CONF_RESOLUTION = 15  # samples
+PREV_CONF_RESOLUTION = 5  # samples
 
 
 class MonteCarloFrame:

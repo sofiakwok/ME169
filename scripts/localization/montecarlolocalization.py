@@ -10,12 +10,10 @@
 #               /scan             LaserScan
 #               /initialpose      geometry_msgs/PoseStamped
 import rospy
-import math
 import numpy as np
 import tf2_ros
 import map as worldmap
-import random
-import time
+import rrt
 
 from geometry_msgs.msg import (
     Twist,
@@ -147,12 +145,16 @@ class MonteCarloLocalization:
             > (self.localization_conf + SWITCH_DELTA_THRESH)
             and self.map_to_odom_mcframes[0].conf > SWITCH_THESH
         ):
-            switch_msg = PoseWithCovarianceStamped()
-            switch_msg.pose.pose = (
-                self.map_to_odom_mcframes[0].lookupRecent() * odom_to_base
-            ).toPose()
-            switch_msg.header.stamp = msg.header.stamp
-            self.switch_pub.publish(switch_msg)
+            map_to_base = self.map_to_odom_mcframes[0].lookupRecent() * odom_to_base
+            base_pt = np.array([[map_to_base.x(), map_to_base.y()]])
+            if (
+                self.map.inFreespace(base_pt)[0]
+                and self.map.distancesToNearestWall(base_pt)[0] > rrt.ROBOT_SIZE
+            ):
+                switch_msg = PoseWithCovarianceStamped()
+                switch_msg.pose.pose = (map_to_base).toPose()
+                switch_msg.header.stamp = msg.header.stamp
+                self.switch_pub.publish(switch_msg)
             f.randomize()
         self.conf_pub.publish(self.map_to_odom_mcframes[0].conf)
 

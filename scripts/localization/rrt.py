@@ -6,8 +6,8 @@ import rospy
 import numpy as np
 import random
 
-N_MAX = 50
-MAX_GROWTH_TRIES = 100
+N_MAX = 20
+MAX_GROWTH_TRIES = 10
 P_GOAL = 0.1
 
 ROBOT_SIZE = 0.2

@@ -49,6 +49,7 @@ class Waypointdriver:
         self.stuck_time = 0
         self.ttheta = None
         self.target = None
+        self.should_regenerate = False
 
         self.msg = Twist()
         self.msg.linear.x = 0.0
@@ -119,18 +120,17 @@ class Waypointdriver:
     def updatePose(self, msg):
         ocx = self.cx
         ocy = self.cy
+        otheta = self.ctheta
 
         self.cx = msg.pose.position.x
         self.cy = msg.pose.position.y
         self.ctheta = 2 * math.atan2(msg.pose.orientation.z, msg.pose.orientation.w)
 
         if (
-            math.sqrt(
-                (ocx - msg.pose.position.x) ** 2 + (ocy - msg.pose.position.y) ** 2
-            )
+            math.sqrt((ocx - self.cx) ** 2 + (ocy - self.cy) ** 2)
             > REPLAN_TELEPORT_THRESH
         ):
-            self.updateWaypoints()
+            self.should_regenerate = True
 
     def generateWaypoints(self):
         if self.target is not None:
@@ -140,22 +140,24 @@ class Waypointdriver:
         else:
             self.waypoints = []
 
+        self.should_regenerate = False
+
     def updateTarget(self, msg):
         # self.waypoints.append([msg.pose.position.x, msg.pose.position.y])
         self.target = (msg.pose.position.x, msg.pose.position.y)
-        self.generateWaypoints()
-        # self.updateWaypoints()
         self.ttheta = 2 * math.atan2(msg.pose.orientation.z, msg.pose.orientation.w)
+        self.should_regenerate = True
 
     def loop(self):
-
         # Run the servo loop until shutdown.
         prev_loop_time = rospy.Time.now()
         while not rospy.is_shutdown():
             dt = (rospy.Time.now() - prev_loop_time).to_sec()
             prev_loop_time = rospy.Time.now()
             if (
-                len(self.waypoints) > 0 and self.localization_conf > CONF_THRESHOLD
+                len(self.waypoints) > 0
+                and self.localization_conf > CONF_THRESHOLD
+                and not self.should_regenerate
             ):  # we have waypoints to move to, and are confident in them
                 tx = self.waypoints[0][0]
                 ty = self.waypoints[0][1]
@@ -163,7 +165,6 @@ class Waypointdriver:
 
                 if dist < MAX_TARGET_DIST:
                     self.waypoints.pop(0)
-                    # self.updateWaypoints()
 
                 gtheta = math.atan2(ty - self.cy, tx - self.cx)
                 dtheta = gtheta - self.ctheta
@@ -178,9 +179,9 @@ class Waypointdriver:
                     self.msg.linear.x = 0
                 else:
                     self.stuck_time = 0
-                    if dist < MAX_TARGET_DIST:
+                    if len(self.waypoints) == 0 and dist < MAX_TARGET_DIST:
                         self.target = None
-                        self.updateWaypoints()
+                        self.generateWaypoints()
                         self.msg.linear.x = 0
                     else:
                         self.msg.linear.x = max(
@@ -192,7 +193,11 @@ class Waypointdriver:
                         )
 
                 self.msg.angular.z = min(max(TURN_SCALE * dtheta, -MAX_TURN), MAX_TURN)
-            else:  # no waypoints, don't move
+            else:  # no waypoints or unreliable waypoints, don't move
+                if (
+                    len(self.waypoints) == 0 or self.should_regenerate
+                ):  # target, generate a path
+                    self.generateWaypoints()
                 self.msg.linear.x = 0
                 self.msg.angular.z = 0
 

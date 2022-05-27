@@ -10,6 +10,7 @@ MAXPTS = 50
 class Map:
     def __init__(self, map, scale=1, map_to_grid=PlanarTransform.unity()) -> None:
         self.shape = map.shape
+        self.map = map
         self.wallpts = self.getWallpts(map)
 
         self.walltree = cKDTree(self.wallpts)
@@ -97,6 +98,28 @@ class Map:
             ),
             wall_pts,
         )
+
+    def inFreespace(self, pts):
+        grid_frame_locs = self.map_to_grid.inv().inParentArray(pts)
+        grid_frame_pts = np.array(grid_frame_locs) / self.scale
+        grid_frame_pxls = np.round(grid_frame_pts)
+
+        fits_in_map = np.logical_and.reduce(
+            np.array(
+                [
+                    grid_frame_pxls[:, 0] < self.shape[0],
+                    grid_frame_pxls[:, 0] >= 0,
+                    grid_frame_pxls[:, 1] < self.shape[1],
+                    grid_frame_pxls[:, 1] >= 0,
+                ]
+            )
+        )
+
+        res = np.array([0] * len(pts), dtype=bool)
+        nonzero = np.nonzero(fits_in_map)
+        res[nonzero] = self.map[grid_frame_pxls[nonzero]] > WALLTHRESHOLD
+
+        return res
 
     def distancesToNearestWall(self, pts):
         grid_frame_locs = self.map_to_grid.inv().inParentArray(pts)
