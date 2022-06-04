@@ -4,12 +4,13 @@ from PlanarTransform import PlanarTransform
 
 WALLTHRESHOLD = 50
 MAXDISTANCE = 0.5
-MAXPTS = 200
+MAXPTS = 50
 
 
 class Map:
     def __init__(self, map, scale=1, map_to_grid=PlanarTransform.unity()) -> None:
         self.shape = map.shape
+        self.map = map
         self.wallpts = self.getWallpts(map)
 
         self.walltree = cKDTree(self.wallpts)
@@ -45,21 +46,19 @@ class Map:
 
         return wall_pts, isgood
 
-    def nearestWallptsFromScan(
-        self, distances, angle_min, angle_max, range_min, range_max, map_to_laser
+    def filterScan(
+        self, distances, angle_min, angle_max, range_min, range_max, max_pts=MAXPTS
     ):
-        grid_to_laser = self.map_to_grid.inv() * map_to_laser
-
         d = np.array(distances)
         ts = np.linspace(angle_min, angle_max, len(d))
 
         distance_filter = np.logical_and(d > range_min, d < range_max)
 
         indices = np.array(list(range(len(distance_filter))))[distance_filter]
-        if len(indices) > MAXPTS:
+        if len(indices) > max_pts:
             remove_indices = indices[
                 np.round(
-                    np.linspace(0, len(indices) - 1, len(indices) - MAXPTS)
+                    np.linspace(0, len(indices) - 1, len(indices) - max_pts)
                 ).astype(int)
             ]
             distance_filter[remove_indices] = False
@@ -70,7 +69,10 @@ class Map:
         xs = d * np.cos(ts)
         ys = d * np.sin(ts)
 
-        laser_frame_scan_locs = np.hstack((xs, ys))
+        return np.hstack((xs, ys))
+
+    def nearestWallptsFromScan(self, laser_frame_scan_locs, map_to_laser):
+        grid_to_laser = self.map_to_grid.inv() * map_to_laser
 
         grid_frame_scan_locs = grid_to_laser.inParentArray(laser_frame_scan_locs)
 
@@ -90,14 +92,38 @@ class Map:
 
         wall_pts, close_to_map = self.nearestWallpts(grid_frame_pxls[fits_in_map])
 
-        # print(grid_frame_pts[fits_in_map][close_to_map].shape, wall_pts.shape)
-
         return (
             self.map_to_grid.inParentArray(
                 grid_frame_pts[fits_in_map][close_to_map] * self.scale
             ),
             wall_pts,
         )
+
+    def inFreespace(self, pts):
+        grid_frame_locs = self.map_to_grid.inv().inParentArray(pts)
+        grid_frame_pts = np.array(grid_frame_locs) / self.scale
+        grid_frame_pxls = np.round(grid_frame_pts)
+
+        fits_in_map = np.logical_and.reduce(
+            np.array(
+                [
+                    grid_frame_pxls[:, 0] < self.shape[0],
+                    grid_frame_pxls[:, 0] >= 0,
+                    grid_frame_pxls[:, 1] < self.shape[1],
+                    grid_frame_pxls[:, 1] >= 0,
+                ]
+            )
+        )
+
+        res = np.array([0] * len(pts), dtype=bool)
+        nonzero = np.nonzero(fits_in_map)
+        idx = grid_frame_pxls[nonzero].astype(int)
+        res[nonzero] = np.logical_and(
+            self.map[idx[:, 1], idx[:, 0]] < WALLTHRESHOLD,
+            self.map[idx[:, 1], idx[:, 0]] >= 0,
+        )
+
+        return res
 
     def distancesToNearestWall(self, pts):
         grid_frame_locs = self.map_to_grid.inv().inParentArray(pts)

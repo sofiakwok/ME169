@@ -6,7 +6,8 @@ import rospy
 import numpy as np
 import random
 
-N_MAX = 50
+N_MAX = 20
+MAX_GROWTH_TRIES = 10
 P_GOAL = 0.1
 
 ROBOT_SIZE = 0.2
@@ -101,7 +102,12 @@ class RRT:
         while True:
             # Determine the target state.
             target_state = None
+
+            ct = 0
             while target_state is None:
+                ct += 1
+                if ct >= MAX_GROWTH_TRIES:
+                    return None
                 to_goal = random.uniform(0, 1)
                 if to_goal < P_GOAL:
                     target_state = State(self.goal_state.x, self.goal_state.y, self.map)

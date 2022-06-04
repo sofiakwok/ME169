@@ -14,19 +14,26 @@ import math
 import numpy as np
 import tf2_ros
 import map
+import time
 
 from geometry_msgs.msg import (
     Twist,
     PoseStamped,
     TransformStamped,
     PoseWithCovarianceStamped,
+    Point,
 )
+
+from visualization_msgs.msg import Marker
+
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import Float32
 from PlanarTransform import PlanarTransform
+from montecarloframe import MonteCarloFrame
 
-WEIGHT = 0.1
+WEIGHT = 0.01
 MAX_UPDATE = 0.01
 
 
@@ -48,19 +55,24 @@ class Localization:
 
         rospy.loginfo("Loaded map")
 
-        self.map_to_odom = PlanarTransform.unity()
-        self.odom_to_base = PlanarTransform.unity()
-
-        self.pose_pub = rospy.Publisher("/pose", PoseStamped, queue_size=10)
+        self.pose_pub = rospy.Publisher("/pose", PoseStamped, queue_size=1)
+        self.alternate_pose_pub = rospy.Publisher("/mcposes", Marker, queue_size=1)
+        self.conf_pub = rospy.Publisher("/localization_conf", Float32, queue_size=1)
         self.brd_tf = tf2_ros.TransformBroadcaster()
 
         self.tf_buffer = tf2_ros.Buffer()
         self.lis_tf = tf2_ros.TransformListener(self.tf_buffer)
 
-        tfmsg = self.tf_buffer.lookup_transform(
-            "base", "laser", rospy.Time.now(), rospy.Duration(0.1)
+        # set up frames
+        self.base_to_laser = PlanarTransform.fromTransform(
+            self.tf_buffer.lookup_transform(
+                "base", "laser", rospy.Time.now(), rospy.Duration(1.0)
+            ).transform
         )
-        self.base_to_laser = PlanarTransform.fromTransform(tfmsg.transform)
+        self.map_to_odom_mcframe = MonteCarloFrame(
+            "odom", self.brd_tf, self.tf_buffer, self.map, self.base_to_laser
+        )
+        self.odom_to_base = PlanarTransform.unity()
 
         rospy.Subscriber("/odom", Odometry, self.updateOdometry)
         rospy.Subscriber("/scan", LaserScan, self.updateScan)
@@ -71,7 +83,9 @@ class Localization:
 
         pose_msg = PoseStamped()
         pose_msg.header.stamp = odom_msg.header.stamp
-        pose_msg.pose = (self.map_to_odom * self.odom_to_base).toPose()
+        pose_msg.pose = (
+            self.map_to_odom_mcframe.lookupRecent() * self.odom_to_base
+        ).toPose()
         self.pose_pub.publish(pose_msg)
 
     def updateScan(self, msg):
@@ -80,90 +94,25 @@ class Localization:
         )
 
         odom_to_base = PlanarTransform.fromTransform(odom_to_base_msg.transform)
-
-        map_to_base = self.map_to_odom * odom_to_base
-        base_to_map = map_to_base.inv()
-
-        scan_pts, map_pts = np.array(
-            self.map.nearestWallptsFromScan(
-                msg.ranges,
-                msg.angle_min,
-                msg.angle_max,
-                msg.range_min,
-                msg.range_max,
-                map_to_base * self.base_to_laser,
-            )
+        laser_frame_scan_locs = self.map.filterScan(
+            msg.ranges, msg.angle_min, msg.angle_max, msg.range_min, msg.range_max
+        )
+        self.map_to_odom_mcframe.localize(
+            laser_frame_scan_locs, odom_to_base, msg.header.stamp, WEIGHT
         )
 
-        scan_pts_base = scan_pts  # base_to_map.inParentArray(scan_pts)
-        map_pts_base = map_pts  # base_to_map.inParentArray(map_pts)
+        conf_msg = Float32(data=self.map_to_odom_mcframe.conf)
+        self.conf_pub.publish(conf_msg)
 
-        if len(scan_pts) > 10:
-            a = np.linalg.norm(map_pts_base - scan_pts_base, axis=1)
-
-            J = (
-                np.array(
-                    [
-                        map_pts_base[:, 0] - scan_pts_base[:, 0],
-                        map_pts_base[:, 1] - scan_pts_base[:, 1],
-                        map_pts_base[:, 1] * scan_pts_base[:, 0]
-                        - map_pts_base[:, 0] * scan_pts_base[:, 1],
-                    ]
-                ).T
-                / a[:, None]
-            )
-
-            # base_to_map = (self.map_to_odom * self.odom_to_base).inv()
-
-            # scan_weights = np.minimum(
-            #     1 / np.linalg.norm(base_to_map.inParentArray(scan_pts), axis=1),
-            #     1,
-            # )
-            # w = np.diag(scan_weights)
-
-            # delta = np.linalg.pinv(J.T @ w @ J) @ J.T @ w @ a
-
-            delta_base = np.linalg.pinv(J.T @ J) @ J.T @ a
-
-            # original_x = self.map_to_odom.x()
-            # original_y = self.map_to_odom.y()
-            # original_theta = self.map_to_odom.theta()
-
-            delta_w_base = WEIGHT * delta_base
-            # delta_w_base *= min(1, MAX_UPDATE / np.linalg.norm(delta_w_base))
-
-            # map_to_base_n = PlanarTransform.basic(
-            #     delta_w_base[0] + base_to_map.x(),
-            #     delta_w_base[1] + base_to_map.y(),
-            #     delta_w_base[2] + base_to_map.theta(),
-            # ).inv()
-
-            # print(delta_w_base, map_to_base.toString(), map_to_base_n.toString())
-
-            self.map_to_odom = PlanarTransform.basic(
-                delta_w_base[0] + self.map_to_odom.x(),
-                delta_w_base[1] + self.map_to_odom.y(),
-                delta_w_base[2] + self.map_to_odom.theta(),
-            )
-
-            # base_to_odom = base_to_map * self.map_to_odom
-            # self.map_to_odom = map_to_base_n * base_to_odom
-
-        self.broadcastMapToOdom(msg.header.stamp)
+        # for f in self.map_to_odom_mcframes:
+        #     f.localize(
+        #         laser_frame_scan_locs, odom_to_base, msg.header.stamp, 10 * WEIGHT
+        #     )
 
     def updatePose(self, msg):
         map_to_base = PlanarTransform.fromPose(msg.pose.pose)
-        self.map_to_odom = map_to_base * self.odom_to_base.inv()
-
-        self.broadcastMapToOdom(msg.header.stamp)
-
-    def broadcastMapToOdom(self, time):
-        msg = TransformStamped()
-        msg.header.stamp = time
-        msg.header.frame_id = "map"
-        msg.child_frame_id = "odom"
-        msg.transform = self.map_to_odom.toTransform()
-        self.brd_tf.sendTransform(msg)
+        self.map_to_odom_mcframe.set(map_to_base * self.odom_to_base.inv())
+        self.map_to_odom_mcframe.broadcast(msg.header.stamp)
 
 
 #

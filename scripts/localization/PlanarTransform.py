@@ -70,11 +70,14 @@ class PlanarTransform:
 
     def __mul__(self, next):
         (x, y) = self.inParent(next.px, next.py)
+        nqz = self.qz * next.qw + self.qw * next.qz
+        nqw = self.qw * next.qw - self.qz * next.qz
+        s = math.sqrt(nqz**2 + nqw**2)
         return PlanarTransform(
             x,
             y,
-            self.qz * next.qw + self.qw * next.qz,
-            self.qw * next.qw - self.qz * next.qz,
+            nqz / s,
+            nqw / s,
         )
 
     def inv(self):
@@ -111,6 +114,13 @@ class PlanarTransform:
     def theta(self):
         return math.atan2(self.sin(), self.cos())
 
+    def dist(self, other):
+        return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+    def angledist(self, other):
+        dtheta = self.theta() - other.theta()
+        return (dtheta + math.pi) % (2 * math.pi) - math.pi
+    
     # Representation:
     def __repr__(self):
         return "<px:%6.3f, py:%6.3f, qz:%6.3f, qw:%6.3f>" % (
